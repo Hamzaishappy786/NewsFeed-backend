@@ -1,0 +1,5 @@
+# Copy to `.dev.vars` for local development (`wrangler dev`).
+# `.dev.vars` is gitignored — never commit real keys.
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxx
+TO_EMAIL=hn374919@gmail.com
+FROM_EMAIL=Daily Digest <onboarding@resend.dev>

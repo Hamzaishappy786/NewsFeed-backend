@@ -1,0 +1,27 @@
+name = "daily-rss-digest"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Cloudflare cron triggers are ALWAYS evaluated in UTC.
+# Pakistan Standard Time is UTC+5 and does not observe DST,
+# so 09:00 PKT == 04:00 UTC.
+#   "0 4 * * *"  -> 09:00 PKT  (current setting)
+#   "0 8 * * *"  -> 13:00 PKT
+[triggers]
+crons = ["0 4 * * *"]
+
+[observability]
+enabled = true
+
+[[kv_namespaces]]
+binding = "SEEN_ARTICLES"
+id = "8eb41ece157e4b6eb4303eda17fb28cc"
+
+[ai]
+binding = "AI"
+
+# Non-secret config lives here. Secrets are set with `wrangler secret put`.
+# RESEND_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID must NOT be committed.
+[vars]
+TO_EMAIL = "hn374919@gmail.com"
+FROM_EMAIL = "Daily Digest <onboarding@resend.dev>"

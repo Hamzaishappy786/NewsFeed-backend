@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Daily Digest",
+    "slug": "daily-digest",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "daily-digest",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "backgroundColor": "#f4f5f7"
+    },
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.hamzaonly.dailydigest",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#ea580c"
+      }
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

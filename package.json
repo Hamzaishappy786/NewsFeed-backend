@@ -1,0 +1,20 @@
+{
+  "name": "daily-rss-digest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Serverless daily RSS digest aggregator on Cloudflare Workers, delivered via Resend.",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241230.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.99.0"
+  }
+}
