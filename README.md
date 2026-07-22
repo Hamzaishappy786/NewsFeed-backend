@@ -1,17 +1,53 @@
 # Daily RSS Digest
 
-A Cloudflare Worker that fetches a set of RSS/Atom feeds once a day, aggregates the
-top 5 articles from each, and emails you a single mobile-responsive digest via
-[Resend](https://resend.com). Runs entirely on Cloudflare's free tier.
+A serverless news aggregator built on Cloudflare Workers. Every morning it pulls the top stories from 6 AI and tech sources, scores them by relevance, generates an AI-written intro using Llama 3.1, and fires off a clean digest to your inbox. No server, no bill, no skibidi nonsense running 24/7. Just pure edge-computed rizz delivered at whatever time you pick.
 
-## Layout
+There is also a companion Android app that lets you read the digest, browse the archive, and control everything from your phone, even when your laptop is off.
+
+---
+
+## App Screenshots
+
+<table>
+  <tr>
+    <td align="center"><b>Today</b></td>
+    <td align="center"><b>Archive</b></td>
+    <td align="center"><b>Settings</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/today.png" width="220"/></td>
+    <td><img src="docs/archieve.png" width="220"/></td>
+    <td><img src="docs/settings.png" width="220"/></td>
+  </tr>
+</table>
+
+---
+
+## What It Does
+
+- Fetches RSS and Atom feeds from OpenAI, The Verge, TechCrunch, Hacker News, r/artificial, and Ars Technica
+- Scores every article by keyword relevance so the most important stuff rises to the top
+- Deduplicates articles across runs using Cloudflare KV so you never see the same story twice
+- Generates one-liner AI summaries and a daily intro paragraph using Workers AI
+- Sends the digest as a styled HTML email via Resend
+- Sends a weekly recap every Sunday with the top stories from the last 7 days
+- Supports pause (7 or 30 days), custom daily send time, and a full archive accessible from the app
+
+---
+
+## Project Layout
 
 | File | Purpose |
 | --- | --- |
 | `src/index.ts` | Cron + HTTP handlers, feed orchestration, Resend delivery |
-| `src/feeds.ts` | The feed list and tuning constants — **edit this to change sources** |
-| `src/parser.ts` | RSS 2.0 / Atom → normalised articles (via `fast-xml-parser`) |
-| `src/email.ts` | Inline-styled HTML + plain-text email rendering |
+| `src/feeds.ts` | Feed list and tuning constants |
+| `src/parser.ts` | RSS 2.0 / Atom to normalised articles via fast-xml-parser |
+| `src/email.ts` | Inline-styled HTML and plain-text email rendering |
+| `src/scoring.ts` | Keyword boost and penalty scoring |
+| `src/archive.ts` | KV-backed archive storage and API |
+| `src/telegram.ts` | Telegram bot delivery (optional) |
+
+---
 
 ## Setup
 
@@ -20,42 +56,29 @@ npm install
 npx wrangler login
 ```
 
-### 1. Get a Resend API key
+### 1. Get a Resend API Key
 
-1. Sign up at [resend.com](https://resend.com) (free tier: 100 emails/day, 3,000/month).
-2. **API Keys → Create API Key**, permission `Sending access`. Copy the `re_...` value —
-   it is shown only once.
-3. For `FROM_EMAIL` you have two options:
-   - **Fastest:** use `onboarding@resend.dev`. Works with zero setup, but it can
-     **only send to the email address that owns the Resend account**.
-   - **Proper:** add your own domain under **Domains**, add the DKIM/SPF records it
-     gives you, and then send from e.g. `digest@yourdomain.com` to anywhere.
+1. Sign up at resend.com (free tier: 100 emails/day, 3,000/month)
+2. Go to API Keys, create one with Sending access, copy the `re_...` value
+3. For `FROM_EMAIL` you can use `onboarding@resend.dev` to get started instantly, or add your own domain for proper setup
 
-### 2. Local secrets
+### 2. Local Secrets
 
 ```bash
-cp .dev.vars.example .dev.vars
+copy .dev.vars.example .dev.vars
 ```
 
-Fill in your real key. `.dev.vars` is gitignored — Wrangler loads it automatically
-for `wrangler dev`. Never commit it.
+Fill in your real key. `.dev.vars` is gitignored and never committed.
 
-### 3. Cloudflare secrets
+### 3. Cloudflare Secrets
 
-`TO_EMAIL` and `FROM_EMAIL` are non-sensitive and already live in `wrangler.toml`
-under `[vars]` — edit them there. Only the API key needs to be a real secret:
+`TO_EMAIL` and `FROM_EMAIL` live in `wrangler.toml` under `[vars]`. Only the API key needs to be a secret:
 
 ```bash
 npx wrangler secret put RESEND_API_KEY
 ```
 
-Paste the key at the prompt. It is encrypted at rest and never readable again.
-
-**Via the dashboard instead:** Workers & Pages → `daily-rss-digest` → Settings →
-Variables and Secrets → Add → type **Secret** → name `RESEND_API_KEY` → Deploy.
-
-> Secrets set with `wrangler secret put` apply to the deployed Worker only.
-> Local `wrangler dev` reads `.dev.vars`. The two are separate; set both.
+Paste the key at the prompt. It is encrypted at rest.
 
 ### 4. Deploy
 
@@ -65,40 +88,34 @@ npm run deploy
 
 The cron trigger registers automatically from `wrangler.toml`.
 
+---
+
 ## Testing
 
 ```bash
 npm run dev
 ```
 
-Then, in a browser or another terminal:
+- `http://localhost:8787/preview` -- renders the digest HTML without sending email
+- `http://localhost:8787/run` -- fetches feeds and actually sends the email
+- `http://localhost:8787/api/today` -- returns the latest digest as JSON for the mobile app
 
-- `http://localhost:8787/preview` — renders the digest HTML **without sending email**.
-  Use this while tweaking styles.
-- `http://localhost:8787/run` — fetches feeds and **actually sends** the email.
-- `curl "http://localhost:8787/__scheduled?cron=0+4+*+*+*"` — simulates the cron event
-  end to end (`npm run dev` passes `--test-scheduled` for this).
-
-Both routes exist on the deployed Worker too, at `https://daily-rss-digest.<subdomain>.workers.dev`.
-
-Live logs from the deployed Worker:
-
-```bash
-npm run tail
-```
+---
 
 ## Schedule
 
-Cloudflare evaluates cron triggers in **UTC**. Pakistan is UTC+5 with no DST, so:
+Cloudflare evaluates cron triggers in UTC. Pakistan is UTC+5 with no DST:
 
 | Cron | Fires at (PKT) |
 | --- | --- |
-| `0 4 * * *` | 09:00 — **current setting** |
+| `0 4 * * *` | 09:00 -- current default |
 | `0 8 * * *` | 13:00 |
 
-Change `crons` in `wrangler.toml` and redeploy.
+The send time can also be changed live from the Settings tab in the Android app without redeploying.
 
-## Adding feeds
+---
+
+## Adding Feeds
 
 Add an entry to `FEEDS` in `src/feeds.ts`:
 
@@ -106,24 +123,16 @@ Add an entry to `FEEDS` in `src/feeds.ts`:
 { name: "Simon Willison", url: "https://simonwillison.net/atom/everything/" },
 ```
 
-Both RSS 2.0 and Atom work. Sections render in array order.
+Both RSS 2.0 and Atom work. A note on Reddit: Cloudflare Workers egress from shared datacenter IPs and Reddit rate-limits them hard. Smaller subreddits like `r/artificial` usually work fine. Larger ones like `r/technology` return HTTP 429 consistently and are commented out.
 
-### A note on Reddit
+---
 
-Reddit rate-limits datacenter IPs hard, and Cloudflare Workers egress from shared
-addresses. `r/technology` returns HTTP 429 essentially every time and is commented
-out for that reason; smaller subreddits like `r/artificial` are usually fine. If a
-Reddit feed starts failing, that's why — the digest still sends, with the source
-listed in the "Skipped feeds" panel.
+## Error Handling
 
-## Error handling
+Feeds are fetched concurrently with `Promise.allSettled` and a 10 second per-feed timeout. A feed that fails is logged and listed in a warning panel at the bottom of the email. The digest still goes out. The run only aborts without sending if every single feed fails.
 
-Feeds are fetched concurrently with `Promise.allSettled` and a 10s per-feed timeout.
-A feed that 404s, times out, or returns unparseable XML is logged, listed in a warning
-panel at the bottom of the email, and skipped — the digest still goes out. The run
-only aborts (without sending) if *every* feed fails.
+---
 
-## Costs
+## Cost
 
-Free tier covers this comfortably: 100,000 Worker requests/day and 5 cron invocations
-per minute against one daily trigger, plus Resend's 100 emails/day.
+Runs entirely on Cloudflare's free tier. Zero dollars per month. The only thing that costs money is if you somehow manage to send more than 3,000 emails in a month on Resend, which would be genuinely impressive.
