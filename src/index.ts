@@ -53,6 +53,17 @@ async function markSeen(env: Env, articles: Article[]): Promise<void> {
 // ─── Pause / unsubscribe ──────────────────────────────────────────────────────
 
 const PAUSE_KEY = "pause-until";
+const HOUR_KEY = "preferred-hour";
+const DEFAULT_SEND_HOUR_UTC = 4; // 09:00 PKT
+
+async function getPreferredHour(env: Env): Promise<number> {
+  const raw = await env.SEEN_ARTICLES.get(HOUR_KEY);
+  return raw ? Number(raw) : DEFAULT_SEND_HOUR_UTC;
+}
+
+async function setPreferredHour(env: Env, utcHour: number): Promise<void> {
+  await env.SEEN_ARTICLES.put(HOUR_KEY, String(utcHour));
+}
 
 async function isPaused(env: Env): Promise<boolean> {
   const raw = await env.SEEN_ARTICLES.get(PAUSE_KEY);
@@ -330,16 +341,25 @@ export default {
     const now = new Date();
     const workerUrl = "https://daily-rss-digest.hamzaonly.workers.dev";
 
-    // Sunday (0) = weekly recap instead of daily digest
-    const dayOfWeek = new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      timeZone: "Asia/Karachi",
-    }).format(now);
-
     ctx.waitUntil(
-      (dayOfWeek === "Sun" ? runWeeklyRecap(env, now) : runDigest(env, workerUrl))
-        .then((s) => s && console.log(`[cron] ${s}`))
-        .catch((e) => console.error(`[cron] failed: ${e}`)),
+      (async () => {
+        // Only fire at the user's preferred UTC hour
+        const preferredHour = await getPreferredHour(env);
+        if (now.getUTCHours() !== preferredHour) {
+          console.log(`[cron] skipping — current hour ${now.getUTCHours()} !== preferred ${preferredHour}`);
+          return;
+        }
+
+        const dayOfWeek = new Intl.DateTimeFormat("en-US", {
+          weekday: "short",
+          timeZone: "Asia/Karachi",
+        }).format(now);
+
+        const result = await (dayOfWeek === "Sun"
+          ? runWeeklyRecap(env, now)
+          : runDigest(env, workerUrl));
+        if (result) console.log(`[cron] ${result}`);
+      })().catch((e) => console.error(`[cron] failed: ${e}`)),
     );
   },
 
@@ -417,6 +437,20 @@ export default {
       if (pathname === "/api/weekly") {
         await runWeeklyRecap(env, new Date());
         return jsonRes({ message: "Weekly recap sent." });
+      }
+
+      // ── /api/time ── get or set preferred send hour (UTC)
+      if (pathname === "/api/time") {
+        if (request.method === "POST") {
+          const utcHour = Number(url.searchParams.get("utc") ?? "4");
+          if (isNaN(utcHour) || utcHour < 0 || utcHour > 23) {
+            return jsonRes({ error: "Invalid hour" }, 400);
+          }
+          await setPreferredHour(env, utcHour);
+          return jsonRes({ message: "Send time updated.", utcHour });
+        }
+        const utcHour = await getPreferredHour(env);
+        return jsonRes({ utcHour, pktHour: (utcHour + 5) % 24 });
       }
 
       // ── /preview — render email without sending
