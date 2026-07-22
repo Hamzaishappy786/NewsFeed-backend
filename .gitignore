@@ -4,3 +4,12 @@ node_modules/
 .env
 dist/
 *.log
+.claude/
+mobile/
+app.json
+eas.json
+icon/
+px
+npm
+wrangler
+daily-rss-digest@1.0.0
